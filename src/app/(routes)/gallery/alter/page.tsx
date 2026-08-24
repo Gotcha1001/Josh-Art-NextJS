@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm, Controller } from "react-hook-form";
@@ -36,23 +36,32 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const gallerySchema = z.object({
-  title: z.string().min(2, "Title must be at least 2 characters"),
+const inspirationSchema = z.object({
+  artistName: z.string().min(2, "Artist name must be at least 2 characters"),
   description: z.string().max(500, "Keep it under 500 characters").optional(),
-  price: z.string().optional(),
+  artistLink: z
+    .string()
+    .url("Enter a valid URL, e.g. https://instagram.com/...")
+    .optional()
+    .or(z.literal("")),
 });
 
-type GalleryFormValues = z.infer<typeof gallerySchema>;
+type InspirationFormValues = z.infer<typeof inspirationSchema>;
 
-export default function GalleryAlterPage() {
+// The actual page content, split out from the default export so the
+// useSearchParams() call below can be wrapped in <Suspense>. Without that,
+// Next.js can't statically prerender this route and the Vercel build fails
+// with "Error occurred prerendering page".
+function AlterInspirationsForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
+
   const { isAdmin, loading: authLoading } = useAuth();
 
-  const { control, handleSubmit, reset } = useForm<GalleryFormValues>({
-    resolver: zodResolver(gallerySchema),
-    defaultValues: { title: "", description: "", price: "" },
+  const { control, handleSubmit, reset } = useForm<InspirationFormValues>({
+    resolver: zodResolver(inspirationSchema),
+    defaultValues: { artistName: "", description: "", artistLink: "" },
   });
 
   const [uploadResult, setUploadResult] =
@@ -60,6 +69,7 @@ export default function GalleryAlterPage() {
   const [existingImageUrl, setExistingImageUrl] = useState<string | undefined>(
     undefined,
   );
+
   // Derive the "no id" case from the initial value instead of setting it inside an effect.
   const [loadingItem, setLoadingItem] = useState(Boolean(id));
   const [notFound, setNotFound] = useState(!id);
@@ -69,51 +79,50 @@ export default function GalleryAlterPage() {
 
   useEffect(() => {
     if (!authLoading && !isAdmin) {
-      router.replace("/gallery");
+      router.replace("/promoting-other-artists");
     }
   }, [authLoading, isAdmin, router]);
 
   useEffect(() => {
     if (!id) return; // nothing to fetch — notFound was already set from initial state
-
     (async () => {
       try {
-        const snap = await getDoc(doc(db, "gallery", id));
+        const snap = await getDoc(doc(db, "inspirations", id));
         if (!snap.exists()) {
           setNotFound(true);
           return;
         }
         const data = snap.data();
         reset({
-          title: data.title ?? "",
+          artistName: data.artistName ?? "",
           description: data.description ?? "",
-          price: data.price ?? "",
+          artistLink: data.artistLink ?? "",
         });
         setExistingImageUrl(data.imageUrl);
       } catch (err) {
         console.error(err);
-        setError("Couldn't load this piece. Please try again.");
+        setError("Couldn't load this artist. Please try again.");
       } finally {
         setLoadingItem(false);
       }
     })();
   }, [id, reset]);
 
-  const onSubmit = async (values: GalleryFormValues) => {
+  const onSubmit = async (values: InspirationFormValues) => {
     if (!id) return;
     setError(null);
     setSubmitting(true);
     try {
-      await updateDoc(doc(db, "gallery", id), {
-        title: values.title,
+      await updateDoc(doc(db, "inspirations", id), {
+        artistName: values.artistName,
         description: values.description ?? "",
-        price: values.price ?? "",
+        artistLink: values.artistLink ?? "",
         ...(uploadResult && {
           imageUrl: uploadResult.url,
           imagePublicId: uploadResult.publicId,
         }),
       });
-      router.push("/gallery");
+      router.push("/promoting-other-artists");
     } catch (err) {
       console.error(err);
       setError("Something went wrong saving your changes. Please try again.");
@@ -126,28 +135,31 @@ export default function GalleryAlterPage() {
     if (!id) return;
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, "gallery", id));
-      router.push("/gallery");
+      await deleteDoc(doc(db, "inspirations", id));
+      router.push("/promoting-other-artists");
     } catch (err) {
       console.error(err);
-      setError("Couldn't delete this piece. Please try again.");
+      setError("Couldn't delete this artist. Please try again.");
       setDeleting(false);
     }
   };
 
   if (authLoading || loadingItem) {
-    return <Spinner fullScreen label="Loading piece..." />;
+    return <Spinner fullScreen label="Loading artist..." />;
   }
 
   if (notFound) {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-20 text-center">
-        <h1 className="text-2xl font-semibold">Piece not found</h1>
+        <h1 className="text-2xl font-semibold">Artist not found</h1>
         <p className="mt-2 text-muted-foreground">
-          This gallery item may have already been removed.
+          This entry may have already been removed.
         </p>
-        <Button className="mt-6" render={<Link href="/gallery" />}>
-          Back to Gallery
+        <Button
+          className="mt-6"
+          render={<Link href="/promoting-other-artists" />}
+        >
+          Back to Promoting Other Artists
         </Button>
       </div>
     );
@@ -162,14 +174,14 @@ export default function GalleryAlterPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Edit Gallery Piece</CardTitle>
+            <CardTitle>Edit Featured Artist</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)}>
               <FieldGroup>
                 <CloudinaryUploader
                   resourceType="image"
-                  label="Artwork Image"
+                  label="Artist Image"
                   value={existingImageUrl}
                   onUploadComplete={setUploadResult}
                   onRemove={() => setUploadResult(null)}
@@ -177,16 +189,16 @@ export default function GalleryAlterPage() {
                 {error && <p className="text-sm text-destructive">{error}</p>}
 
                 <Controller
-                  name="title"
+                  name="artistName"
                   control={control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor={field.name}>Title</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>Artist Name</FieldLabel>
                       <Input
                         {...field}
                         id={field.name}
                         aria-invalid={fieldState.invalid}
-                        placeholder="e.g. Sunset Over the Bluffs"
+                        placeholder="e.g. Jane Doe"
                       />
                       {fieldState.invalid && (
                         <FieldError errors={[fieldState.error]} />
@@ -205,7 +217,7 @@ export default function GalleryAlterPage() {
                         {...field}
                         id={field.name}
                         aria-invalid={fieldState.invalid}
-                        placeholder="A short description of the piece..."
+                        placeholder="A short note on their work..."
                         rows={4}
                       />
                       {fieldState.invalid && (
@@ -216,16 +228,16 @@ export default function GalleryAlterPage() {
                 />
 
                 <Controller
-                  name="price"
+                  name="artistLink"
                   control={control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor={field.name}>Price</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>Artist Link</FieldLabel>
                       <Input
                         {...field}
                         id={field.name}
                         aria-invalid={fieldState.invalid}
-                        placeholder="e.g. R1,500 or Not for sale"
+                        placeholder="https://instagram.com/theirprofile"
                       />
                       {fieldState.invalid && (
                         <FieldError errors={[fieldState.error]} />
@@ -243,10 +255,10 @@ export default function GalleryAlterPage() {
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Delete this piece?</DialogTitle>
+                        <DialogTitle>Remove this artist?</DialogTitle>
                         <DialogDescription>
-                          This can&apos;t be undone. The image and its details
-                          will be removed from the gallery permanently.
+                          This can&apos;t be undone. The entry will be removed
+                          from Promoting Other Artists permanently.
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
@@ -265,7 +277,7 @@ export default function GalleryAlterPage() {
                     <Button
                       type="button"
                       variant="outline"
-                      render={<Link href="/gallery" />}
+                      render={<Link href="/promoting-other-artists" />}
                     >
                       Cancel
                     </Button>
@@ -280,5 +292,13 @@ export default function GalleryAlterPage() {
         </Card>
       </motion.div>
     </div>
+  );
+}
+
+export default function AlterInspirationsPage() {
+  return (
+    <Suspense fallback={<Spinner fullScreen label="Loading artist..." />}>
+      <AlterInspirationsForm />
+    </Suspense>
   );
 }
