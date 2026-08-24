@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm, Controller } from "react-hook-form";
@@ -36,32 +36,23 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const inspirationSchema = z.object({
-  artistName: z.string().min(2, "Artist name must be at least 2 characters"),
+const gallerySchema = z.object({
+  title: z.string().min(2, "Title must be at least 2 characters"),
   description: z.string().max(500, "Keep it under 500 characters").optional(),
-  artistLink: z
-    .string()
-    .url("Enter a valid URL, e.g. https://instagram.com/...")
-    .optional()
-    .or(z.literal("")),
+  price: z.string().optional(),
 });
 
-type InspirationFormValues = z.infer<typeof inspirationSchema>;
+type GalleryFormValues = z.infer<typeof gallerySchema>;
 
-// The actual page content, split out from the default export so the
-// useSearchParams() call below can be wrapped in <Suspense>. Without that,
-// Next.js can't statically prerender this route and the Vercel build fails
-// with "Error occurred prerendering page".
-function AlterInspirationsForm() {
+export default function GalleryAlterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
-
   const { isAdmin, loading: authLoading } = useAuth();
 
-  const { control, handleSubmit, reset } = useForm<InspirationFormValues>({
-    resolver: zodResolver(inspirationSchema),
-    defaultValues: { artistName: "", description: "", artistLink: "" },
+  const { control, handleSubmit, reset } = useForm<GalleryFormValues>({
+    resolver: zodResolver(gallerySchema),
+    defaultValues: { title: "", description: "", price: "" },
   });
 
   const [uploadResult, setUploadResult] =
@@ -69,7 +60,6 @@ function AlterInspirationsForm() {
   const [existingImageUrl, setExistingImageUrl] = useState<string | undefined>(
     undefined,
   );
-
   // Derive the "no id" case from the initial value instead of setting it inside an effect.
   const [loadingItem, setLoadingItem] = useState(Boolean(id));
   const [notFound, setNotFound] = useState(!id);
@@ -79,50 +69,51 @@ function AlterInspirationsForm() {
 
   useEffect(() => {
     if (!authLoading && !isAdmin) {
-      router.replace("/promoting-other-artists");
+      router.replace("/gallery");
     }
   }, [authLoading, isAdmin, router]);
 
   useEffect(() => {
     if (!id) return; // nothing to fetch — notFound was already set from initial state
+
     (async () => {
       try {
-        const snap = await getDoc(doc(db, "inspirations", id));
+        const snap = await getDoc(doc(db, "gallery", id));
         if (!snap.exists()) {
           setNotFound(true);
           return;
         }
         const data = snap.data();
         reset({
-          artistName: data.artistName ?? "",
+          title: data.title ?? "",
           description: data.description ?? "",
-          artistLink: data.artistLink ?? "",
+          price: data.price ?? "",
         });
         setExistingImageUrl(data.imageUrl);
       } catch (err) {
         console.error(err);
-        setError("Couldn't load this artist. Please try again.");
+        setError("Couldn't load this piece. Please try again.");
       } finally {
         setLoadingItem(false);
       }
     })();
   }, [id, reset]);
 
-  const onSubmit = async (values: InspirationFormValues) => {
+  const onSubmit = async (values: GalleryFormValues) => {
     if (!id) return;
     setError(null);
     setSubmitting(true);
     try {
-      await updateDoc(doc(db, "inspirations", id), {
-        artistName: values.artistName,
+      await updateDoc(doc(db, "gallery", id), {
+        title: values.title,
         description: values.description ?? "",
-        artistLink: values.artistLink ?? "",
+        price: values.price ?? "",
         ...(uploadResult && {
           imageUrl: uploadResult.url,
           imagePublicId: uploadResult.publicId,
         }),
       });
-      router.push("/promoting-other-artists");
+      router.push("/gallery");
     } catch (err) {
       console.error(err);
       setError("Something went wrong saving your changes. Please try again.");
@@ -135,31 +126,28 @@ function AlterInspirationsForm() {
     if (!id) return;
     setDeleting(true);
     try {
-      await deleteDoc(doc(db, "inspirations", id));
-      router.push("/promoting-other-artists");
+      await deleteDoc(doc(db, "gallery", id));
+      router.push("/gallery");
     } catch (err) {
       console.error(err);
-      setError("Couldn't delete this artist. Please try again.");
+      setError("Couldn't delete this piece. Please try again.");
       setDeleting(false);
     }
   };
 
   if (authLoading || loadingItem) {
-    return <Spinner fullScreen label="Loading artist..." />;
+    return <Spinner fullScreen label="Loading piece..." />;
   }
 
   if (notFound) {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-20 text-center">
-        <h1 className="text-2xl font-semibold">Artist not found</h1>
+        <h1 className="text-2xl font-semibold">Piece not found</h1>
         <p className="mt-2 text-muted-foreground">
-          This entry may have already been removed.
+          This gallery item may have already been removed.
         </p>
-        <Button
-          className="mt-6"
-          render={<Link href="/promoting-other-artists" />}
-        >
-          Back to Promoting Other Artists
+        <Button className="mt-6" render={<Link href="/gallery" />}>
+          Back to Gallery
         </Button>
       </div>
     );
@@ -174,14 +162,14 @@ function AlterInspirationsForm() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Edit Featured Artist</CardTitle>
+            <CardTitle>Edit Gallery Piece</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)}>
               <FieldGroup>
                 <CloudinaryUploader
                   resourceType="image"
-                  label="Artist Image"
+                  label="Artwork Image"
                   value={existingImageUrl}
                   onUploadComplete={setUploadResult}
                   onRemove={() => setUploadResult(null)}
@@ -189,16 +177,16 @@ function AlterInspirationsForm() {
                 {error && <p className="text-sm text-destructive">{error}</p>}
 
                 <Controller
-                  name="artistName"
+                  name="title"
                   control={control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor={field.name}>Artist Name</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>Title</FieldLabel>
                       <Input
                         {...field}
                         id={field.name}
                         aria-invalid={fieldState.invalid}
-                        placeholder="e.g. Jane Doe"
+                        placeholder="e.g. Sunset Over the Bluffs"
                       />
                       {fieldState.invalid && (
                         <FieldError errors={[fieldState.error]} />
@@ -217,7 +205,7 @@ function AlterInspirationsForm() {
                         {...field}
                         id={field.name}
                         aria-invalid={fieldState.invalid}
-                        placeholder="A short note on their work..."
+                        placeholder="A short description of the piece..."
                         rows={4}
                       />
                       {fieldState.invalid && (
@@ -228,16 +216,16 @@ function AlterInspirationsForm() {
                 />
 
                 <Controller
-                  name="artistLink"
+                  name="price"
                   control={control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor={field.name}>Artist Link</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>Price</FieldLabel>
                       <Input
                         {...field}
                         id={field.name}
                         aria-invalid={fieldState.invalid}
-                        placeholder="https://instagram.com/theirprofile"
+                        placeholder="e.g. R1,500 or Not for sale"
                       />
                       {fieldState.invalid && (
                         <FieldError errors={[fieldState.error]} />
@@ -255,10 +243,10 @@ function AlterInspirationsForm() {
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Remove this artist?</DialogTitle>
+                        <DialogTitle>Delete this piece?</DialogTitle>
                         <DialogDescription>
-                          This can&apos;t be undone. The entry will be removed
-                          from Promoting Other Artists permanently.
+                          This can&apos;t be undone. The image and its details
+                          will be removed from the gallery permanently.
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
@@ -277,7 +265,7 @@ function AlterInspirationsForm() {
                     <Button
                       type="button"
                       variant="outline"
-                      render={<Link href="/promoting-other-artists" />}
+                      render={<Link href="/gallery" />}
                     >
                       Cancel
                     </Button>
@@ -292,13 +280,5 @@ function AlterInspirationsForm() {
         </Card>
       </motion.div>
     </div>
-  );
-}
-
-export default function AlterInspirationsPage() {
-  return (
-    <Suspense fallback={<Spinner fullScreen label="Loading artist..." />}>
-      <AlterInspirationsForm />
-    </Suspense>
   );
 }
