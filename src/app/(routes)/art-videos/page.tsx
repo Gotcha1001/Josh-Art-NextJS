@@ -3,14 +3,30 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { ExternalLink, Pencil, Plus } from "lucide-react";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+} from "firebase/firestore";
+import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { Spinner } from "@/components/shared/spinner";
 import { Pagination } from "@/components/shared/pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface VideoItem {
   id: string;
@@ -18,6 +34,7 @@ interface VideoItem {
   artBy?: string;
   content?: string;
   videoUrl: string;
+  videoPublicId?: string | null;
 }
 
 const ITEMS_PER_PAGE = 6;
@@ -32,10 +49,12 @@ function isDirectVideo(url: string) {
 }
 
 export default function ArtVideosPage() {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -53,10 +72,43 @@ export default function ArtVideosPage() {
     })();
   }, []);
 
+  const handleDelete = async (video: VideoItem) => {
+    setDeletingId(video.id);
+    setDeleteError(null);
+    try {
+      // 1. Delete the file from Cloudinary (only for uploaded files, not pasted links)
+      if (video.videoPublicId) {
+        const idToken = await user?.getIdToken();
+        const res = await fetch("/api/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            publicId: video.videoPublicId,
+            resourceType: "video",
+          }),
+        });
+        if (!res.ok) throw new Error("Cloudinary delete failed");
+      }
+
+      // 2. Delete the record from Firestore
+      await deleteDoc(doc(db, "videos", video.id));
+      setVideos((prev) => prev.filter((v) => v.id !== video.id));
+    } catch (err) {
+      console.error(err);
+      setDeleteError("Couldn't delete this video. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(videos.length / ITEMS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
   const pageItems = videos.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE,
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
   );
 
   if (loading) {
@@ -78,6 +130,10 @@ export default function ArtVideosPage() {
           </Button>
         )}
       </div>
+
+      {deleteError && (
+        <p className="mb-4 text-sm text-red-300">{deleteError}</p>
+      )}
 
       {videos.length === 0 ? (
         <p className="py-20 text-center text-muted-foreground">
@@ -132,15 +188,49 @@ export default function ArtVideosPage() {
                     )}
                   </CardContent>
                   {isAdmin && (
-                    <CardFooter>
+                    <CardFooter className="gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full gap-1"
+                        className="flex-1 gap-1"
                         render={<Link href={`/video-update?id=${video.id}`} />}
                       >
                         <Pencil className="h-3.5 w-3.5" /> Edit
                       </Button>
+                      <Dialog>
+                        <DialogTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              className="flex-1 gap-1"
+                            />
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Delete this video?</DialogTitle>
+                            <DialogDescription>
+                              This can&apos;t be undone. The video and its
+                              details will be removed permanently.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <DialogFooter>
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleDelete(video)}
+                              disabled={deletingId === video.id}
+                            >
+                              {deletingId === video.id
+                                ? "Deleting..."
+                                : "Yes, Delete"}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     </CardFooter>
                   )}
                 </Card>
@@ -150,7 +240,7 @@ export default function ArtVideosPage() {
 
           <div className="mt-10 flex justify-center">
             <Pagination
-              currentPage={page}
+              currentPage={currentPage}
               totalPages={totalPages}
               onPageChange={setPage}
             />
