@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { Pencil, Plus } from "lucide-react";
+import { ExternalLink, Pencil, Plus } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { Spinner } from "@/components/shared/spinner";
@@ -15,11 +15,21 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 interface VideoItem {
   id: string;
   title: string;
-  description?: string;
+  artBy?: string;
+  content?: string;
   videoUrl: string;
 }
 
 const ITEMS_PER_PAGE = 6;
+
+// Direct video files (Cloudinary uploads, .mp4 etc.) can play in a <video> tag.
+// Pasted YouTube/Facebook links cannot, so those open in a new tab instead.
+function isDirectVideo(url: string) {
+  return (
+    url.includes("res.cloudinary.com") ||
+    /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(url)
+  );
+}
 
 export default function ArtVideosPage() {
   const { isAdmin } = useAuth();
@@ -84,19 +94,40 @@ export default function ArtVideosPage() {
                 transition={{ delay: i * 0.05 }}
               >
                 <Card className="overflow-hidden pt-0">
-                  <div className="relative aspect-video w-full bg-black">
-                    <video
-                      src={video.videoUrl}
-                      controls
-                      preload="metadata"
-                      className="h-full w-full object-cover"
-                    />
+                  <div className="relative flex aspect-video w-full items-center justify-center bg-black">
+                    {isDirectVideo(video.videoUrl) ? (
+                      <video
+                        src={video.videoUrl}
+                        controls
+                        preload="metadata"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        className="gap-1"
+                        render={
+                          <a
+                            href={video.videoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          />
+                        }
+                      >
+                        <ExternalLink className="h-4 w-4" /> Watch video
+                      </Button>
+                    )}
                   </div>
                   <CardContent className="pt-4">
                     <h3 className="font-semibold">{video.title}</h3>
-                    {video.description && (
-                      <p className="line-clamp-2 text-sm text-muted-foreground">
-                        {video.description}
+                    {video.artBy && (
+                      <p className="text-sm text-muted-foreground">
+                        Art by {video.artBy}
+                      </p>
+                    )}
+                    {video.content && (
+                      <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                        {video.content}
                       </p>
                     )}
                   </CardContent>

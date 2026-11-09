@@ -150,7 +150,7 @@ import { Mail, MessageCircle, Copy, Check, Landmark } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FacebookIcon, InstagramIcon, TikTokIcon } from "@/components/icons";
 
-const CONTACT_EMAIL = "heartworksfoundation@outlook.com";
+const CONTACT_EMAIL = "stoneartcity@gmail.com";
 const CONTACT_PHONE_DISPLAY = "064 8468693";
 // wa.me needs digits only, country code first, no leading 0 on the local number
 const CONTACT_WHATSAPP_HREF = "https://wa.me/27648468693";
