@@ -75,13 +75,14 @@ export default function VideoUploadFormPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await addDoc(collection(db, "art-video"), {
+      // Collection name and createdAt must match what /art-videos reads.
+      await addDoc(collection(db, "videos"), {
         title: values.title,
         artBy: values.artBy,
         content: values.content,
         videoUrl,
         videoPublicId: uploadResult?.publicId ?? null,
-        date: Timestamp.now(),
+        createdAt: Timestamp.now(),
         userName: user?.displayName || user?.email || "",
       });
       reset();
