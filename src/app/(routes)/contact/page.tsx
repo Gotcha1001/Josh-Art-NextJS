@@ -174,11 +174,11 @@ const SOCIALS = [
 ];
 
 const BANK_DETAILS = [
-  { label: "Bank Name", value: "TymeBank" },
-  { label: "Account Type", value: "EveryDay Account" },
-  { label: "Account Number", value: "51100254841" },
-  { label: "Branch Code", value: "678910" },
-  { label: "Account Holder", value: "TymeBank JDH" },
+  { label: "Bank Name", value: "Standard Bank" },
+  { label: "Account Type", value: "Current Account" },
+  { label: "Account Number", value: "10263345813" },
+  { label: "Branch Code", value: "2527" },
+  { label: "Account Holder", value: "CORNERSTONE INTH3 SPIRIT (Pty) Ltd" },
 ];
 
 const containerVariants = {
